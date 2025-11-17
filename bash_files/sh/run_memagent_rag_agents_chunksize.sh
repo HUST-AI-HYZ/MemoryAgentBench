@@ -1,5 +1,4 @@
 source ~/.bashrc
-source /scratch/yzhu/anaconda3/etc/profile.d/conda.sh
 conda activate MABench
 
 export PYTHONUNBUFFERED=1
