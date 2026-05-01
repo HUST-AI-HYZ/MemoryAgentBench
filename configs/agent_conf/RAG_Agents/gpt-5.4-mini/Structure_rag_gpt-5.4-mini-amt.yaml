@@ -1,0 +1,18 @@
+agent_name: Structure_rag_amt
+model: gpt-5.4-mini
+temperature: 0.7
+
+# Safety cap (in tokens) on retrieved memories prepended to the prompt.
+# input_length_limit - buffer_length - generation_max_length is the effective
+# budget for retrieved memory content. gpt-5.4-mini = 272k context window.
+input_length_limit: 200000
+buffer_length: 5000
+
+output_dir: ./outputs/gpt-5.4-mini-amt
+
+agent_chunk_size: 4096
+retrieve_num: 30
+
+# AgentMemoryToolkit Durable Functions post-processing after memorize.
+# One of: none | facts | summary | both
+amt_processing_mode: none

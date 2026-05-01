@@ -74,6 +74,8 @@ class AgentWrapper:
             self._initialize_cognee_agent(agent_config, dataset_config)
         elif self._is_agent_type("zep"):
             self._initialize_zep_agent(agent_config)
+        elif self._is_agent_type("amt"):
+            self._initialize_amt_agent(agent_config, dataset_config)
         elif self._is_agent_type("rag"):
             self._initialize_rag_agent(agent_config, dataset_config)
         else:
@@ -84,28 +86,62 @@ class AgentWrapper:
         return agent_type in self.agent_name
 
     def _create_oai_client(self):
-        """Create an OpenAI-compatible client. Uses Azure OpenAI if env vars are set.
+        """Create an OpenAI-compatible client.
 
-        Environment variables for Azure:
-          - AZURE_OPENAI_ENDPOINT
-          - AZURE_OPENAI_API_VERSION (optional; default provided by SDK or pinned elsewhere)
-          - AZURE_OPENAI_API_KEY
+        Resolution order:
+          1. ``AZURE_OPENAI_ENDPOINT`` + ``AZURE_OPENAI_API_KEY`` (classic Azure OpenAI).
+          2. ``AI_FOUNDRY_ENDPOINT`` + ``DefaultAzureCredential`` (mirrors the
+             auth model used by AgentMemoryToolkit for embeddings, so a single
+             ``az login`` works for both retrieval and chat).
+          3. Public OpenAI via ``OPENAI_API_KEY``.
 
-        When using Azure, ensure self.model is the deployment name.
+        When using Azure (cases 1 and 2), ``self.model`` must be the Azure
+        deployment name, not the model family.
         """
-        try:
-            azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-            if azure_endpoint:
-                # Lazy import to avoid requiring Azure class when not used
-                from openai import AzureOpenAI
-                return AzureOpenAI(
-                    api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
-                    api_version=os.environ.get("AZURE_OPENAI_API_VERSION"),
-                    azure_endpoint=azure_endpoint,
-                )
-        except Exception:
-            pass
-        return OpenAI()
+        azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        ai_foundry_endpoint = os.environ.get("AI_FOUNDRY_ENDPOINT")
+        has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
+        print(
+            f"\n[OAI] resolver: AZURE_OPENAI_ENDPOINT={'set' if azure_endpoint else 'unset'} "
+            f"AI_FOUNDRY_ENDPOINT={'set' if ai_foundry_endpoint else 'unset'} "
+            f"OPENAI_API_KEY={'set' if has_openai_key else 'unset'}\n"
+        )
+
+        # Case 1: classic Azure OpenAI with API key
+        if azure_endpoint:
+            from openai import AzureOpenAI
+            return AzureOpenAI(
+                api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
+                api_version=os.environ.get("AZURE_OPENAI_API_VERSION"),
+                azure_endpoint=azure_endpoint,
+            )
+
+        # Case 2: AI Foundry endpoint with Entra ID (DefaultAzureCredential)
+        if ai_foundry_endpoint:
+            from openai import AzureOpenAI
+            from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            token_provider = get_bearer_token_provider(
+                DefaultAzureCredential(),
+                "https://cognitiveservices.azure.com/.default",
+            )
+            return AzureOpenAI(
+                azure_endpoint=ai_foundry_endpoint,
+                api_version=os.environ.get(
+                    "AZURE_OPENAI_API_VERSION", "2024-10-21"
+                ),
+                azure_ad_token_provider=token_provider,
+            )
+
+        # Case 3: public OpenAI
+        if has_openai_key:
+            return OpenAI()
+
+        raise RuntimeError(
+            "No OpenAI client credentials found. Set one of: "
+            "AZURE_OPENAI_ENDPOINT (+ AZURE_OPENAI_API_KEY), "
+            "AI_FOUNDRY_ENDPOINT (with DefaultAzureCredential / az login), "
+            "or OPENAI_API_KEY."
+        )
 
     def _create_standard_response(self, output, input_tokens, output_tokens, memory_time, query_time):
         """Create standardized response dictionary."""
@@ -224,6 +260,44 @@ class AgentWrapper:
         self.memory = Memory()
         self.agent_start_time = time.time()
 
+    def _initialize_amt_agent(self, agent_config, dataset_config):
+        """Initialize AgentMemoryToolkit (Cosmos DB) agent."""
+        from agent_memory_toolkit import CosmosMemoryClient
+
+        self.retrieve_num = agent_config['retrieve_num']
+        self.context = ''
+        self.client = self._create_oai_client()
+
+        cosmos_kwargs = {
+            "cosmos_endpoint": os.environ.get("COSMOS_DB_ENDPOINT"),
+            "cosmos_database": os.environ.get("COSMOS_DB_DATABASE"),
+            "cosmos_container": os.environ.get("COSMOS_DB_CONTAINER"),
+            "cosmos_counter_container": os.environ.get("COSMOS_DB_COUNTERS_CONTAINER", "counter"),
+            "cosmos_lease_container": os.environ.get("COSMOS_DB_LEASE_CONTAINER", "leases"),
+            "cosmos_throughput_mode": os.environ.get("COSMOS_DB_THROUGHPUT_MODE", "serverless"),
+            "cosmos_autoscale_max_ru": int(os.environ.get("COSMOS_DB_AUTOSCALE_MAX_RU", "1000")),
+            "ai_foundry_endpoint": os.environ.get("AI_FOUNDRY_ENDPOINT"),
+            "embedding_model": os.environ.get("EMBEDDING_MODEL", "text-embedding-3-large"),
+            "use_default_credential": True,
+        }
+        adf_endpoint = os.environ.get("ADF_ENDPOINT")
+        if adf_endpoint:
+            cosmos_kwargs["adf_endpoint"] = adf_endpoint
+            cosmos_kwargs["adf_key"] = os.environ.get("ADF_KEY", "")
+
+        self.memory = CosmosMemoryClient(**cosmos_kwargs)
+        try:
+            self.memory.create_memory_store()
+        except Exception as exc:
+            print(f"\n[AMT] create_memory_store skipped: {exc}\n")
+
+        # Optional agentic-memory post-processing run after all chunks
+        # are memorized. One of: "none" (default), "facts", "summary", "both".
+        self.amt_processing_mode = agent_config.get('amt_processing_mode', 'none')
+        self._amt_user_id = None
+        self._amt_thread_id = None
+        self.agent_start_time = time.time()
+
     def _initialize_cognee_agent(self, agent_config, dataset_config):
         """Initialize Cognee agent with knowledge graph configuration."""
         self.context = ''
@@ -271,7 +345,7 @@ class AgentWrapper:
         # Route to appropriate agent handler based on agent type
         if 'Long_context_agent' in self.agent_name:
             return self._handle_long_context_agent(message, memorizing)
-        elif any(self._is_agent_type(agent_type) for agent_type in ["letta", "cognee", "mem0", "zep"]):
+        elif any(self._is_agent_type(agent_type) for agent_type in ["letta", "cognee", "mem0", "zep", "amt"]):
             return self._handle_memory_agent(message, memorizing, query_id, context_id)
         elif self._is_agent_type("rag"):
             return self._handle_rag_agent(message, memorizing, query_id, context_id)
@@ -406,6 +480,8 @@ class AgentWrapper:
             return self._handle_mem0_agent(message, memorizing, query_id, context_id)
         elif self._is_agent_type("zep"):
             return self._handle_zep_agent(message, memorizing, query_id, context_id)
+        elif self._is_agent_type("amt"):
+            return self._handle_amt_agent(message, memorizing, query_id, context_id)
         else:
             raise NotImplementedError(f"Memory agent type not supported: {self.agent_name}")
 
@@ -605,6 +681,81 @@ class AgentWrapper:
             self.agent_start_time = time.time()  # Reset time
             return output
     
+    # AgentMemoryToolkit (Cosmos DB)
+    def _handle_amt_agent(self, message, memorizing, query_id, context_id):
+        """Handle message processing for AgentMemoryToolkit (Cosmos DB) agents."""
+        # Derive a stable user/thread id from the per-context save folder so
+        # memorize (context_id=None) and query (context_id=int) end up under
+        # the same partition. Falls back to context_id if no folder is set.
+        folder_tag = os.path.basename(self.agent_save_to_folder.rstrip('/\\')) \
+            if self.agent_save_to_folder else f'ctx{context_id}'
+        user_id = f'amt_{self.sub_dataset}_{folder_tag}'
+        thread_id = user_id
+        if memorizing:
+            memorize_template = get_template(self.sub_dataset, 'memorize', self.agent_name)
+            formatted_message = memorize_template.format(
+                context=message,
+                **({'time_stamp': time.strftime("%Y-%m-%d %H:%M:%S")} if '{time_stamp}' in memorize_template else {})
+            )
+            self.memory.add_cosmos(
+                user_id=user_id,
+                role="user",
+                content=formatted_message,
+                thread_id=thread_id,
+            )
+            self._amt_user_id = user_id
+            self._amt_thread_id = thread_id
+            return "Memorized"
+        else:
+            memory_construction_time = time.time() - self.agent_start_time
+            relevant_memories = self.memory.search_cosmos(
+                search_terms=message,
+                user_id=user_id,
+                top_k=self.retrieve_num,
+            )
+            print(f"\n\n\nrelevant_memories count: {len(relevant_memories)}\n\n\n")
+
+            # Truncate memories to fit within input_length_limit (token budget)
+            entries = [f"- {entry['content']}" for entry in relevant_memories]
+            kept = []
+            running_tokens = 0
+            for entry in entries:
+                entry_tokens = len(self.tokenizer.encode(entry, disallowed_special=()))
+                if running_tokens + entry_tokens > self.input_length_limit:
+                    break
+                kept.append(entry)
+                running_tokens += entry_tokens
+            if len(kept) < len(entries):
+                print(f"\n[AMT] truncated retrieved memories: kept {len(kept)}/{len(entries)} "
+                      f"(~{running_tokens} tokens, limit {self.input_length_limit})\n")
+            memories_str = "\n".join(kept)
+            
+            system_prompt = f"You are a helpful AI. Answer the question based on query and memories.\n{memories_str}\n"
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message + "\n\nCurrent Time: " + time.strftime("%Y-%m-%d %H:%M:%S")}
+            ]
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=llm_messages,
+                temperature=self.temperature,
+                max_completion_tokens=self.max_tokens
+            )
+            
+            memory_retrieval_length = len(self.tokenizer.encode(memories_str, disallowed_special=()))
+            query_time_len = time.time() - self.agent_start_time - memory_construction_time
+            print(f"\nmemory_length: {memory_retrieval_length}\n")
+            
+            output = self._create_standard_response(
+                response.choices[0].message.content,
+                response.usage.prompt_tokens + memory_retrieval_length,
+                response.usage.completion_tokens,
+                memory_construction_time,
+                query_time_len
+            )
+            self.agent_start_time = time.time()
+            return output
+
     # Zep
     def _handle_zep_agent(self, message, memorizing, query_id, context_id):
         """Handle Zep processing."""
@@ -1073,8 +1224,42 @@ class AgentWrapper:
             "retrieval_context": retrieval_context,
         }
         
+    def _run_amt_post_processing(self):
+        """Trigger AMT Durable Function pipelines after memorize phase.
+
+        Controlled by ``amt_processing_mode`` in the agent YAML:
+          - ``none``    : skip (default)
+          - ``facts``   : extract_facts only
+          - ``summary`` : generate_thread_summary only
+          - ``both``    : both pipelines
+        Outputs land in the same Cosmos container as turns and are
+        therefore picked up by subsequent ``search_cosmos`` queries.
+        """
+        mode = getattr(self, 'amt_processing_mode', 'none')
+        if mode == 'none' or not self._amt_user_id or not self._amt_thread_id:
+            return
+        try:
+            if mode in ('facts', 'both'):
+                print(f"\n[AMT] extract_facts user={self._amt_user_id} thread={self._amt_thread_id}\n")
+                self.memory.extract_facts(user_id=self._amt_user_id, thread_id=self._amt_thread_id)
+            if mode in ('summary', 'both'):
+                print(f"\n[AMT] generate_thread_summary user={self._amt_user_id} thread={self._amt_thread_id}\n")
+                self.memory.generate_thread_summary(user_id=self._amt_user_id, thread_id=self._amt_thread_id)
+        except Exception as exc:
+            print(f"\n[AMT] post-processing failed: {exc}\n")
+
     def save_agent(self):
         """Save agent state to disk for persistence."""
+        # AMT: trigger optional Durable Functions post-processing after memorize
+        if self._is_agent_type("amt"):
+            self._run_amt_post_processing()
+            # Drop a marker so future runs skip re-memorization
+            os.makedirs(self.agent_save_to_folder, exist_ok=True)
+            with open(f"{self.agent_save_to_folder}/amt_marker.txt", "w") as f:
+                f.write(f"user_id={self._amt_user_id}\nthread_id={self._amt_thread_id}\n")
+            print("\n\n Agent saved (amt: cosmos-backed) \n\n")
+            return
+
         # Currently only implemented for Letta agents
         if not self._is_agent_type("letta") and not self._is_agent_type("zep"):
             print("\n\n Agent not saved (not implemented for this agent type) \n\n")
@@ -1107,7 +1292,7 @@ class AgentWrapper:
         agent_save_folder = self.agent_save_to_folder
         assert os.path.exists(agent_save_folder), f"Folder {agent_save_folder} does not exist."
 
-        if not self._is_agent_type("letta") and not self._is_agent_type("zep"):
+        if not self._is_agent_type("letta") and not self._is_agent_type("zep") and not self._is_agent_type("amt"):
             print("\n\nAgent loading not implemented for this agent type\n\n")
             return None
 
