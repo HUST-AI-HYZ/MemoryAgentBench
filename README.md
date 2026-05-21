@@ -51,11 +51,7 @@ Notably, the team adopted a "inject once, query multiple times" design philosoph
 
 - TODO List ✍️ .
     
-    <del> [x] New Dataset in Long Range Understanding (LRU). </del>
-
-    [] Leaderboard website for our benchmark.
-
-    [] The code framework with separated front-end and back-end is easier to integrate with custom memory agents.
+    <del> [x] New Dataset in Long Range Understanding (LRU). </del> 
 
 **🌟 More details (such as datasets collection) coming soon! 🌟**
 
