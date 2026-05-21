@@ -172,10 +172,12 @@ We thank the open-source code and datasets from RULER, InfBench, HELMET and Long
 
 We would appreciate it if you could cite the following paper if you found the repository useful for your work:
 ```
-@article{hu2025evaluating,
-  title={Evaluating Memory in LLM Agents via Incremental Multi-Turn Interactions},
-  author={Hu, Yuanzhe and Wang, Yu and McAuley, Julian},
-  journal={arXiv preprint arXiv:2507.05257},
-  year={2025}
+@inproceedings{
+hu2026evaluating,
+title={Evaluating Memory in {LLM} Agents via Incremental Multi-Turn Interactions},
+author={Yuanzhe Hu and Yu Wang and Julian McAuley},
+booktitle={The Fourteenth International Conference on Learning Representations},
+year={2026},
+url={https://openreview.net/forum?id=DT7JyQC3MR}
 }
 ```
