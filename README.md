@@ -164,9 +164,34 @@ python llm_based_eval/longmem_qa_evaluate.py
 python llm_based_eval/summarization_evaluate.py
 ```
 
+
+
+
+
+## 📝 Clarification on Evaluation Metrics
+
+In our paper, "accuracy" is used as a shorthand and maps to either `substring_exact_match` or `exact_match` in the JSON output, depending on the task. Here is the full metric-to-dataset mapping:
+
+| Category | Dataset(s) | Metric | JSON Field |
+|---|---|---|---|
+| Accurate Retrieval | event_qa, ruler_qa1, ruler_qa2 | Accuracy | `substring_exact_match` |
+| Conflict Resolution | fact_mh, fact_sh | Accuracy | `substring_exact_match` |
+| LRU | detectiveQA | Accuracy | `exact_match` |
+| TTL (ICL series) | ICL_banking, ICL_clinic, ICL_nlu, ICL_trec_coarse, ICL_trec_fine | Accuracy | `exact_match` |
+| Recsys | recsys | Recall@5 | `Recall@5` |
+| Longmemeval | longmemeval | LLM-as-judge | — |
+| Infbench | infbench (summarization subset) | F1 (LLM-as-judge) | Following [HELMET](https://github.com/princeton-nlp/HELMET) |
+
+> **Note:** For `exact_match`, the parsing is strict — e.g., if the ground-truth label is `"43"` but the model returns `"label: 43"`, it will be counted as incorrect. We recommend flexible parsing when adapting the benchmark to your own pipeline.
+
+
+
 ## 👍 Acknowledgement 
 
 We thank the open-source code and datasets from RULER, InfBench, HELMET and LongmemEval.
+
+
+
 
 ## 📝 Citation 
 
