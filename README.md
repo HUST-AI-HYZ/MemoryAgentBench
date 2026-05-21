@@ -26,6 +26,9 @@ We collected and reformulated data from previous benchmarks and datasets. All da
 Notably, the team adopted a "inject once, query multiple times" design philosophy—one long text corresponds to multiple questions, significantly improving evaluation efficiency.
 
 ## 🚧 Update
+- [x] (May , 2026)
+    Added results for GPT-5-Mini model on our benchmark [OpenReview Link](https://openreview.net/forum?id=DT7JyQC3MR&referrer=%5BAuthor%20Console%5D(%2Fgroup%3Fid%3DICLR.cc%2F2026%2FConference%2FAuthors%23your-submissions)). 
+
 - [x] (Jan. 26th, 2026)
     Our paper is accepted by Fourteenth International Conference on Learning Representations (ICLR 2026). We will make some improvement for our current benchmark. 
       
