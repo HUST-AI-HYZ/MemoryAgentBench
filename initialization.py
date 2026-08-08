@@ -60,23 +60,30 @@ def create_agent_and_fetch_data(agent_config, dataset_config):
     return start_time, conversation_creator.get_chunks(), conversation_creator.get_query_and_answers()
 
 
-def load_existing_results(output_file_path, dataset_config, all_query_answer_pairs):
+def load_existing_results(output_file_path, dataset_config, all_query_answer_pairs,
+                          force_rerun=False):
     """
     Load existing results from output file and initialize variables.
-    
+
     Args:
         output_file_path: Path to the output results file
         dataset_config: Configuration dictionary for the dataset
         all_query_answer_pairs: List of query-answer pairs for all contexts
-        
+        force_rerun: When True, ignore any saved results and start from scratch.
+
     Returns:
         tuple: (metrics, results, last_completed_context_id, last_completed_query_id)
     """
-    if not os.path.exists(output_file_path):
+    # --force promises "re-run even if results already exist". Returning saved rows here breaks
+    # that promise twice: their metrics are averaged into the new score, and their high-water
+    # mark makes should_skip_query skip the very queries the flag asked to re-run. A run after a
+    # code change then reports figures partly produced by the old code, with nothing in the
+    # output to show it happened.
+    if force_rerun or not os.path.exists(output_file_path):
         return defaultdict(list), [], 0, 0
-    
+
     # Load existing results from file
-    with open(output_file_path, "r") as file:
+    with open(output_file_path, "r", encoding="utf-8") as file:
         saved_output = json.load(file)
         
     # Initialize data structures
