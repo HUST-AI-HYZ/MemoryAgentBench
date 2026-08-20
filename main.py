@@ -86,8 +86,8 @@ def save_results_to_file(output_path, agent_config, dataset_config, results, met
     }
     
     # Write to file
-    with open(output_path, "w") as file:
-        json.dump(output_data, file, indent=4)
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(output_data, file, indent=4, ensure_ascii=False)
     logger.info(f"Results saved at {output_path}")
 
 
@@ -180,7 +180,7 @@ def main():
     # Load existing results and initialize tracking variables
     time_cost_list = []
     metrics, results, last_processed_context_id, last_processed_query_id = load_existing_results(
-        output_path, dataset_config, all_query_answer_pairs
+        output_path, dataset_config, all_query_answer_pairs, args.force
     )
     
     # Start evaluation loop - process each context and its associated queries

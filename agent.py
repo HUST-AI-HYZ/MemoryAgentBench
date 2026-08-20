@@ -694,7 +694,7 @@ class AgentWrapper:
             # save the context
             save_dir = f"./outputs/rag_retrieved/{self.agent_name}/k_{self.retrieve_num}/{self.sub_dataset}/chunksize_{self.chunk_size}/query_{query_id}_context_{context_id}.json"
             os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-            with open(save_dir, "w") as f:
+            with open(save_dir, "w", encoding="utf-8") as f:
                 paragraphs = [p for p in retrieved_context.replace("\r\n", "\n").split("\n") if p.strip()]
                 json.dump({"retrieved_context_paragraphs": paragraphs, "response": response}, f, ensure_ascii=False, indent=2)
             
@@ -758,8 +758,8 @@ class AgentWrapper:
         if output.get("retrieval_context"):
             save_dir = f"./outputs/rag_retrieved/{self.agent_name}/k_{self.retrieve_num}/{self.sub_dataset}/chunksize_{self.chunk_size}/query_{query_id}_context_{context_id}.json"
             os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-            with open(save_dir, "w") as f:
-                json.dump(output["retrieval_context"], f)
+            with open(save_dir, "w", encoding="utf-8") as f:
+                json.dump(output["retrieval_context"], f, ensure_ascii=False)
             
             # drop the retrieval_context       
             output.pop("retrieval_context")
@@ -1103,13 +1103,13 @@ class AgentWrapper:
             shutil.copyfile(source_db_path, target_db_path)
             
             # Save the agent ID for future loading
-            with open(f"{agent_save_folder}/agent_id.txt", "w") as f:
+            with open(f"{agent_save_folder}/agent_id.txt", "w", encoding="utf-8") as f:
                 f.write(self.agent_state.id)
         elif self._is_agent_type("zep"):
             # save the message that agent has processed
             messages = "agent finished memorization"
             os.makedirs(self.agent_save_to_folder, exist_ok=True)
-            with open(f"{self.agent_save_to_folder}/messages.txt", "w") as f:
+            with open(f"{self.agent_save_to_folder}/messages.txt", "w", encoding="utf-8") as f:
                 f.write(messages)
                 
         print("\n\n Agent saved...\n\n")
