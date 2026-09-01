@@ -17,3 +17,5 @@ cognee/.data_storage/
 *.db
 croissant_files
 .env
+.venv/
+*.tgz

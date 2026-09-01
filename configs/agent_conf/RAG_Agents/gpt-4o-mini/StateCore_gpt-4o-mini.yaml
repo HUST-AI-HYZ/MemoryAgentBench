@@ -1,0 +1,14 @@
+# StateCore (github.com/yul761/StateCore), driven through its published MCP front end --
+# the wrapper spawns `npx -y statecore-mcp@0.6.0` itself, so there is no service to start.
+# Every value except the output_dir is copied from Simple_rag_bm25 so the row sits beside
+# the published baselines on the same terms: retrieve_num 10 is what BM25, Zep, Cognee,
+# HippoRAG-v2 and the embedding baselines use. The memory side makes zero model calls
+# (deterministic supersession + lexical retrieval); see methods/statecore.py.
+agent_name: Agentic_memory_statecore
+model: gpt-4o-mini
+temperature: 0.7
+input_length_limit: 10000000
+buffer_length: 200
+output_dir: ./outputs/statecore-gpt-4o-mini
+
+retrieve_num: 10

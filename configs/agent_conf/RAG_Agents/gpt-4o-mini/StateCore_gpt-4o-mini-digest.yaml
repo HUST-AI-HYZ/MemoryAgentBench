@@ -1,0 +1,15 @@
+# The LLM-assisted arm of the StateCore pair: writes are stored as events and the engine's
+# own distillation runs (extraction into supersession-tracked facts, semantic conflict
+# resolution). The distillation model is gpt-5-mini -- the engine's recommended model; its
+# runtime is operated with gpt-5-class models -- while the reader stays gpt-4o-mini like every
+# other row. All other values are copied from Simple_rag_bm25, matching the deterministic arm.
+# The delta between the two StateCore rows is the measured value of the engine's distillation.
+agent_name: Agentic_memory_statecore_digest
+model: gpt-4o-mini
+temperature: 0.7
+input_length_limit: 10000000
+buffer_length: 200
+output_dir: ./outputs/statecore-digest-gpt-4o-mini
+
+retrieve_num: 10
+statecore_digest: true
