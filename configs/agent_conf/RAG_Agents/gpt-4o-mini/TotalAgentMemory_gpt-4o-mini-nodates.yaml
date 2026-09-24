@@ -1,8 +1,9 @@
-# total-agent-memory 14.3.1 over MCP stdio, recorded dates withheld from the reader --
+# total-agent-memory 14.5.1 over MCP stdio, recorded dates withheld from the reader --
 # the ablation arm.
 #
 # Same store, same retrieval; only the recorded date of each hit is dropped, so the reader sees
-# fact text alone as it does for the other methods. Every other value is copied from
+# fact text alone as it does for the other methods. The hits still reach the reader oldest first
+# (see ORDER in methods/total_agent_memory.py), so their order carries recency. Every other value is copied from
 # Simple_rag_bm25 (see TotalAgentMemory_gpt-4o-mini.yaml).
 agent_name: Agentic_memory_total_agent_memory_nodates
 model: gpt-4o-mini

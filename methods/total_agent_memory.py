@@ -4,7 +4,7 @@ total-agent-memory (github.com/vbcherepanov/total-agent-memory, "TAM") is a loca
 for agents: SQLite + FTS5 + local embeddings, spoken to over MCP. It runs here as its own process
 over MCP's stdio transport, so nothing is installed into this venv:
 
-    uv tool install total-agent-memory==14.3.1       # or: pipx install total-agent-memory==14.3.1
+    uv tool install total-agent-memory==14.5.1       # or: pipx install total-agent-memory==14.5.1
     export TAM_COMMAND=total-agent-memory            # optional, this is the default
 
 14.3.1 is the minimum: 14.3.0 deduplicated near-identical facts, so an update that changed one
@@ -22,7 +22,20 @@ TAM returns with every hit is the date the record was written (`created_at`). Th
 differ only in whether that date reaches the reader:
 
   - `tam_show_recorded: true` prefixes each retrieved fact with its recorded time;
-  - `tam_show_recorded: false` passes the fact text alone, like the other methods.
+  - `tam_show_recorded: false` passes the fact text alone, like the other methods; the order
+    of the hits still follows recorded time (see ORDER).
+
+ORDER. TAM ranks the top-k by relevance; the reader gets them in the order they were recorded,
+oldest first. The reader labels them `Memory 1..k` and the task prompt tells it that a larger
+serial number is a newer fact, so presentation order must follow recorded time for those labels
+to mean what the prompt says. Presenting the relevance order instead makes the reader pick the
+lowest-ranked fact as the newest, and a better ranking scores worse.
+
+`tam_supersede: true` (third config, TAM 14.5.0+) saves each fact with `supersede`: a fact that
+gives a new value for the same opening words ("X's citizenship is Argentina" -> "... is Armenia")
+retires the earlier record at write time, so it is no longer a retrieval candidate. TAM leaves
+this off by default because it misfires on multi-valued relations; FactConsolidation's relations
+are single-valued.
 
 TAM's own latest-wins answering lives in `memory_answer`, which returns an answer rather than
 passages; it is not used here, so the reader is the harness's gpt-4o-mini in both configs.
@@ -148,10 +161,11 @@ class TamProcess:
 class TamMemory:
     """Buffers the context stream, writes it as facts, answers top-k queries."""
 
-    def __init__(self, command, project, show_recorded):
+    def __init__(self, command, project, show_recorded, supersede=False):
         self.tam = TamProcess(command)
         self.project = project
         self.show_recorded = show_recorded
+        self.supersede = supersede
         self.chunks = []
         self.flushed = False
         self.stats = {}
@@ -166,13 +180,17 @@ class TamMemory:
         if self.flushed:
             return self.stats
         facts = parse_fact_lines("".join(self.chunks))
-        deduplicated = 0
+        deduplicated = superseded = 0
         for fact in facts:
-            saved = self.tam.call("memory_save", {"content": fact, "type": "fact", "project": self.project})
+            args = {"content": fact, "type": "fact", "project": self.project}
+            if self.supersede:
+                args["supersede"] = True
+            saved = self.tam.call("memory_save", args)
             if not saved.get("saved"):
                 raise TamError(f"memory_save did not store a fact: {saved}")
             deduplicated += bool(saved.get("deduplicated"))
-        self.stats = {"facts": len(facts), "deduplicated": deduplicated}
+            superseded += len(saved.get("superseded") or [])
+        self.stats = {"facts": len(facts), "deduplicated": deduplicated, "superseded": superseded}
         self.flushed = True
         print(f"\ntotal-agent-memory flush: {self.stats}\n")
         return self.stats
@@ -181,10 +199,12 @@ class TamMemory:
         found = self.tam.call("memory_recall", {
             "query": text, "project": self.project, "limit": k, "detail": "full",
         })
-        # Every record is a `fact`, so this is one group, already in TAM's rank order.
-        hits = [hit for group in (found.get("results") or {}).values() for hit in group]
+        # Every record is a `fact`, so this is one group, in TAM's rank order. The top k go to the
+        # reader oldest first (see ORDER); saves are sequential, so `created_at` is strictly increasing.
+        hits = [hit for group in (found.get("results") or {}).values() for hit in group][:k]
+        hits.sort(key=lambda hit: hit.get("created_at") or "")
         contents = []
-        for hit in hits[:k]:
+        for hit in hits:
             content = hit.get("content") or ""
             if self.show_recorded and hit.get("created_at"):
                 content = f"[recorded {hit['created_at']}] {content}"
@@ -199,8 +219,9 @@ def initialize_total_agent_memory_agent(agent, agent_config=None):
     agent.agent_start_time = time.time()
     command = os.environ.get("TAM_COMMAND", DEFAULT_COMMAND)
     show_recorded = bool(config.get("tam_show_recorded", True))
-    agent.tam_memory = TamMemory(command, f"mab_{agent.sub_dataset}", show_recorded)
-    print(f"\n\ntotal-agent-memory via `{command}`, show_recorded={show_recorded}\n\n")
+    supersede = bool(config.get("tam_supersede", False))
+    agent.tam_memory = TamMemory(command, f"mab_{agent.sub_dataset}", show_recorded, supersede)
+    print(f"\n\ntotal-agent-memory via `{command}`, show_recorded={show_recorded}, supersede={supersede}\n\n")
 
 
 def handle_total_agent_memory_agent(agent, message, memorizing, query_id, context_id):
