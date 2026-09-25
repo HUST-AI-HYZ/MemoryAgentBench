@@ -1,0 +1,16 @@
+# total-agent-memory 14.5.1 over MCP stdio, recorded dates shown to the reader.
+# This is the product's search path.
+#
+# Every value except tam_show_recorded is copied from Simple_rag_bm25 rather than chosen:
+# temperature and input_length_limit match every gpt-4o-mini config in the repo, buffer_length
+# matches Simple_rag_bm25, and retrieve_num 10 is what BM25, Zep, Cognee, HippoRAG-v2, RAPTOR,
+# GraphRAG, Self-RAG, knowl, agentmemory and all four embedding baselines use.
+agent_name: Agentic_memory_total_agent_memory
+model: gpt-4o-mini
+temperature: 0.7
+input_length_limit: 10000000
+buffer_length: 200
+output_dir: ./outputs/total-agent-memory-gpt-4o-mini
+
+retrieve_num: 10
+tam_show_recorded: true

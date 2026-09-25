@@ -1,0 +1,15 @@
+# total-agent-memory 14.5.1 over MCP stdio, recorded dates shown to the reader, and each fact
+# saved with supersede: a new value for the same opening words retires the earlier record.
+#
+# Every value except the tam_* pair is copied from Simple_rag_bm25 (see
+# TotalAgentMemory_gpt-4o-mini.yaml).
+agent_name: Agentic_memory_total_agent_memory_supersede
+model: gpt-4o-mini
+temperature: 0.7
+input_length_limit: 10000000
+buffer_length: 200
+output_dir: ./outputs/total-agent-memory-gpt-4o-mini-supersede
+
+retrieve_num: 10
+tam_show_recorded: true
+tam_supersede: true
